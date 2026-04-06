@@ -117,23 +117,47 @@ public class FijiAgent {
     
     /**
      * S5: Backend implementation for Fiji execution.
+     * Auto-detects Xvfb and wraps Fiji call for headless environments.
      */
     private class FijiBackendImpl implements Scheduler.FijiBackend {
+        
+        // Xvfb screen configuration
+        private static final String XVFB_SCREEN = "0 1024x768x24";
+        
+        /**
+         * Check if Xvfb is available in the system.
+         */
+        private boolean hasXvfb() {
+            return java.nio.file.Files.exists(java.nio.file.Paths.get("/usr/bin/xvfb-run")) ||
+                   java.nio.file.Files.exists(java.nio.file.Paths.get("/usr/bin/Xvfb"));
+        }
         
         @Override
         public String executeMacro(String macroPath, String args) {
             try {
                 String fijiPath = environment.getFijiExecutable();
                 
-                // Build command: fiji --headless -batch macro.ijm "args"
-                ProcessBuilder pb = new ProcessBuilder(
-                    fijiPath,
-                    "--headless",
-                    "-batch", macroPath,
-                    args
-                );
+                // Build command with Xvfb auto-detection
+                java.util.List<String> command = new java.util.ArrayList<>();
                 
-                System.out.println("[COMMAND] " + String.join(" ", pb.command()));
+                if (hasXvfb()) {
+                    // Wrap with Xvfb for true headless operation
+                    command.add("xvfb-run");
+                    command.add("-a");
+                    command.add("-screen");
+                    command.add(XVFB_SCREEN);
+                    System.out.println("[INFO] Xvfb detected, using virtual display");
+                }
+                
+                command.add(fijiPath);
+                command.add("--headless");
+                command.add("-batch");
+                command.add(macroPath);
+                command.add(args);
+                
+                ProcessBuilder pb = new ProcessBuilder(command);
+                
+                System.out.println("[COMMAND] " + String.join(" ", command));
                 
                 Process process = pb.start();
                 
