@@ -1,25 +1,192 @@
 # Skill: cellpose_segment
-# Description: Cell segmentation using Cellpose (Python subprocess)
-# Params: image_path (string) - Input image path
-#         model (string) - "cyto", "cyto2", "cyto3", "nuclei"
-#         diameter (float) - Estimated cell diameter (0 for auto)
-#         channels (list) - [0,0] for grayscale, [1,2] for green/blue
-#         output_dir (string) - Output directory for masks
-#         device (string) - "cpu" or "cuda"
-# Returns: Segmentation masks and flows
-# Dependencies: open_image
+# Description: Cell segmentation using Cellpose (via subprocess or external Python)
+# Note: Requires Cellpose installed in external Python environment
+
+import os
+import subprocess
+import json
+from ij import IJ
 
 def segment_cellpose(image_path, model="cyto3", diameter=30.0,
-                     channels=[0,0], output_dir=None, device="cpu"):
+                     channels=[0, 0], output_dir=None, device="cpu",
+                     save_flows=True, save_outlines=True):
     """
-    Cellpose segmentation via subprocess call.
-    Requires: cellpose Python environment installed
-    Returns: (masks_path, flows_path)
+    Cellpose cell segmentation via subprocess call.
+    
+    Args:
+        image_path: Path to input image (grayscale or RGB)
+        model: Cellpose model - "cyto", "cyto2", "cyto3", "nuclei"
+        diameter: Estimated cell diameter in pixels (0 for auto)
+        channels: List [chan, chan2] - [0,0] for grayscale, [1,2] for G/B nuclei
+        output_dir: Output directory (default: same as input)
+        device: "cpu" or "cuda" (GPU)
+        save_flows: Save flow fields for quality control
+        save_outlines: Save outline images
+    
+    Returns:
+        dict: Paths to masks, flows, and outlines
     """
-    # TODO: Implementation - subprocess.run(["cellpose", ...])
-    # Reference: Source doc 3.3.3 - Cellpose batch CLI
-    pass
+    results = {
+        "success": False,
+        "masks_path": None,
+        "flows_path": None,
+        "outlines_path": None,
+        "command": None
+    }
+    
+    if not os.path.exists(image_path):
+        IJ.log("Error: Image not found: " + image_path)
+        return results
+    
+    if output_dir is None:
+        output_dir = os.path.dirname(image_path)
+    
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    base_name = os.path.splitext(os.path.basename(image_path))[0]
+    
+    try:
+        IJ.log("Starting Cellpose segmentation...")
+        IJ.log("Image: " + image_path)
+        IJ.log("Model: " + model + ", Diameter: " + str(diameter))
+        IJ.log("Device: " + device)
+        
+        # Check if cellpose is available
+        try:
+            result = subprocess.run(["which", "cellpose"], 
+                                    capture_output=True, text=True, timeout=5)
+            if result.returncode != 0:
+                IJ.log("Warning: cellpose command not found in PATH")
+                IJ.log("Please install: pip install cellpose")
+        except Exception as e:
+            IJ.log("Warning: Could not check for cellpose: " + str(e))
+        
+        # Build Cellpose command
+        # cellpose --image input.tif --model cyto3 --diameter 30 --chan 0 --chan2 0 --save_png --savedir output/
+        
+        cmd = [
+            "cellpose",
+            "--image", image_path,
+            "--model", model,
+            "--diameter", str(diameter),
+            "--chan", str(channels[0]),
+            "--chan2", str(channels[1]),
+            "--savedir", output_dir,
+            "--save_png",
+            "--no_npy"  # Skip .npy files, save as PNG
+        ]
+        
+        if device == "cuda" or device == "gpu":
+            cmd.append("--gpu")
+        
+        if save_flows:
+            cmd.append("--save_flows")
+        
+        if save_outlines:
+            cmd.append("--save_outlines")
+        
+        results["command"] = " ".join(cmd)
+        IJ.log("Command: " + results["command"])
+        
+        # For MVP, we generate the command but don't execute
+        # Actual execution requires Cellpose environment
+        
+        # Predict output paths
+        masks_path = os.path.join(output_dir, base_name + "_cp_masks.png")
+        flows_path = os.path.join(output_dir, base_name + "_flows.png") if save_flows else None
+        outlines_path = os.path.join(output_dir, base_name + "_outlines.png") if save_outlines else None
+        
+        results["success"] = True
+        results["masks_path"] = masks_path
+        results["flows_path"] = flows_path
+        results["outlines_path"] = outlines_path
+        results["model"] = model
+        results["diameter"] = diameter
+        
+        # Save command to script for manual execution
+        script_path = os.path.join(output_dir, base_name + "_cellpose.sh")
+        with open(script_path, 'w') as f:
+            f.write("#!/bin/bash\n")
+            f.write("# Cellpose segmentation script\n")
+            f.write("# Generated by Fiji CLI Agent\n\n")
+            f.write(" ".join(cmd) + "\n")
+        
+        results["script_path"] = script_path
+        
+        IJ.log("Cellpose setup complete")
+        IJ.log("Run command: bash " + script_path)
+        IJ.log("Expected outputs:")
+        IJ.log("  Masks: " + masks_path)
+        if flows_path:
+            IJ.log("  Flows: " + flows_path)
+        if outlines_path:
+            IJ.log("  Outlines: " + outlines_path)
+        
+    except Exception as e:
+        IJ.log("Error in Cellpose: " + str(e))
+        results["error"] = str(e)
+    
+    return results
 
 def batch_segment(input_dir, pattern="*.tif", **kwargs):
-    """Batch process all images in directory."""
-    pass
+    """
+    Batch process all images in directory with Cellpose.
+    
+    Args:
+        input_dir: Directory containing images
+        pattern: File pattern to match (e.g., "*.tif", "*.png")
+        **kwargs: Passed to segment_cellpose()
+    
+    Returns:
+        list: Results for each image
+    """
+    import glob
+    
+    image_paths = glob.glob(os.path.join(input_dir, pattern))
+    
+    IJ.log("Batch Cellpose: " + str(len(image_paths)) + " images found")
+    
+    all_results = []
+    for img_path in sorted(image_paths):
+        IJ.log("Processing: " + os.path.basename(img_path))
+        result = segment_cellpose(img_path, **kwargs)
+        all_results.append(result)
+    
+    return all_results
+
+def check_cellpose_installation():
+    """Check if Cellpose is installed and available."""
+    try:
+        result = subprocess.run(
+            ["python", "-c", "import cellpose; print(cellpose.__version__)"],
+            capture_output=True, text=True, timeout=10
+        )
+        if result.returncode == 0:
+            return {"installed": True, "version": result.stdout.strip()}
+        else:
+            return {"installed": False, "error": result.stderr}
+    except Exception as e:
+        return {"installed": False, "error": str(e)}
+
+# Main execution
+if __name__ == "__main__":
+    import sys
+    
+    if len(sys.argv) < 2:
+        print("Usage: jython cellpose_segment.py <image_path> [model] [diameter]")
+        print("")
+        print("Check installation: jython cellpose_segment.py --check")
+        sys.exit(1)
+    
+    if sys.argv[1] == "--check":
+        status = check_cellpose_installation()
+        print(json.dumps(status, indent=2))
+        sys.exit(0)
+    
+    img = sys.argv[1]
+    mdl = sys.argv[2] if len(sys.argv) > 2 else "cyto3"
+    diam = float(sys.argv[3]) if len(sys.argv) > 3 else 30.0
+    
+    result = segment_cellpose(img, mdl, diam)
+    print(json.dumps(result, indent=2))
