@@ -12,10 +12,11 @@ import java.nio.file.Paths;
 public class FijiEnvironment {
     
     private static final String[] FIJI_CANDIDATES = {
-        System.getenv("FIJI_HOME") != null ? System.getenv("FIJI_HOME") + "/ImageJ-linux64" : null,
-        System.getProperty("user.home") + "/Fiji/ImageJ-linux64",
-        "/opt/fiji/Fiji.app/ImageJ-linux64",
-        "/usr/local/fiji/ImageJ-linux64",
+        System.getenv("FIJI_HOME") != null ? System.getenv("FIJI_HOME") + "/fiji" : null,
+        System.getProperty("user.home") + "/Fiji/fiji",
+        "/home/gyjgyj/Fiji/fiji",
+        "/opt/fiji/Fiji.app/fiji",
+        "/usr/local/fiji/fiji",
         "fiji"  // Try PATH as last resort
     };
     
