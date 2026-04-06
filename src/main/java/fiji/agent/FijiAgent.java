@@ -159,8 +159,13 @@ public class FijiAgent {
                 int exitCode = process.waitFor();
                 
                 if (exitCode != 0) {
-                    System.err.println("[WARN] Fiji exited with code: " + exitCode);
-                    System.err.println("[WARN] Errors: " + errors.toString());
+                    System.err.println("[ERROR] Fiji exited with code: " + exitCode);
+                    System.err.println("[ERROR] Errors: " + errors.toString());
+                    return null;  // Return null to indicate failure
+                }
+                
+                if (errors.length() > 0) {
+                    System.err.println("[WARN] Fiji stderr: " + errors.toString());
                 }
                 
                 return output.toString();
